@@ -20,3 +20,5 @@ vendor/
 # Go mod cache
 /go.sum
 
+# Virus samples
+samples/
