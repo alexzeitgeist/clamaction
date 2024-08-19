@@ -87,50 +87,32 @@ func main() {
 	}
 	debugEnabled = config.Debug
 
-	debugLog("Starting virus quarantine process")
 	if err := quarantineVirus(config); err != nil {
 		log.Fatalf("Failed to quarantine virus: %v", err)
 	}
 
-	debugLogf("Reading quarantine file: %s", config.QuarantineFile)
 	emlFile, err := os.ReadFile(config.QuarantineFile)
 	if err != nil {
 		log.Fatalf("Failed to read file: %v", err)
 	}
 
-	debugLog("Parsing headers from email file")
 	headers, err := parseHeaders(emlFile)
 	if err != nil {
 		log.Fatalf("Failed to parse headers: %v", err)
 	}
 
-	debugLog("Notifying admin about quarantined email")
 	if err := notifyAdmin(config, emlFile, headers); err != nil {
 		log.Fatalf("Failed to notify admin: %v", err)
 	}
 
 	for _, recipient := range config.Recipients {
 		if recipient != "" {
-			debugLogf("Notifying recipient: %s", recipient)
 			if err := notifyRecipient(config, recipient, headers); err != nil {
 				log.Fatalf("Failed to notify recipient: %v", err)
 			}
 		}
 	}
 
-	debugLog("Completed processing")
-}
-
-func debugLog(message string) {
-	if debugEnabled {
-		log.Println(message)
-	}
-}
-
-func debugLogf(format string, v ...interface{}) {
-	if debugEnabled {
-		log.Printf(format, v...)
-	}
 }
 
 func getEnvVar(key string) (string, error) {
@@ -203,50 +185,39 @@ func loadConfig() (*Config, error) {
 }
 
 func quarantineVirus(config *Config) error {
-	debugLogf("Opening source email file: %s", config.Email)
 	srcFile, err := os.Open(config.Email)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %v", err)
 	}
 	defer srcFile.Close()
 
-	debugLogf("Creating quarantine file: %s", config.QuarantineFile)
 	destFile, err := os.Create(config.QuarantineFile)
 	if err != nil {
 		return fmt.Errorf("failed to create quarantine file: %v", err)
 	}
 	defer destFile.Close()
 
-	debugLog("Copying source file to quarantine")
 	_, err = io.Copy(destFile, srcFile)
 	if err != nil {
 		return fmt.Errorf("failed to copy file to quarantine: %v", err)
 	}
 
-	debugLog("Syncing quarantine file to disk")
 	err = destFile.Sync()
 	if err != nil {
 		return fmt.Errorf("failed to sync quarantine file: %v", err)
 	}
 
-	debugLogf("Deleting original email file: %s", config.Email)
 	err = os.Remove(config.Email)
 	if err != nil {
 		return fmt.Errorf("failed to delete original file after quarantine: %v", err)
-	}
-
-	if config.Debug {
-		debugLogf("Virus quarantined to: %s", config.QuarantineFile)
 	}
 
 	return nil
 }
 
 func notifyAdmin(config *Config, emlFile []byte, headers []Header) error {
-	debugLog("Formatting headers for admin notification")
 	formattedHeaders := formatHeaders(headers)
 
-	debugLog("Creating admin email content")
 	adminContent := fmt.Sprintf(
 		AdminEmailTemplate,
 		config.Sender,
@@ -256,21 +227,17 @@ func notifyAdmin(config *Config, emlFile []byte, headers []Header) error {
 		formattedHeaders,
 	)
 
-	debugLogf("Preparing admin notification email to: %s", config.EmailAdmin)
 	return prepareEmail(config.EmailService, config.EmailAdmin, adminContent, config.SMTPHost, config.SMTPPort, emlFile, filepath.Base(config.QuarantineFile))
 }
 
 func notifyRecipient(config *Config, recipient string, headers []Header) error {
-	debugLogf("Notifying recipient: %s", recipient)
 	filename := filepath.Base(config.QuarantineFile)
 	quarantineId := filename[strings.LastIndex(filename, ".")+1:]
 	sanitizedSender := strings.ReplaceAll(config.Sender, "@", "[at]")
 	sanitizedSender = strings.ReplaceAll(sanitizedSender, ".", "[dot]")
 
-	debugLog("Formatting selected headers for recipient notification")
 	formattedHeaders := formatSelectedHeaders(headers, []string{"Message-Id", "Sender", "From", "To", "Date", "Subject"})
 
-	debugLog("Creating recipient email content")
 	emailContent := fmt.Sprintf(
 		RecipientEmailTemplate,
 		config.EmailAdmin,
@@ -284,35 +251,29 @@ func notifyRecipient(config *Config, recipient string, headers []Header) error {
 }
 
 func parseHeaders(emlContent []byte) ([]Header, error) {
-	debugLog("Reading email message for header parsing")
 	msg, err := message.Read(bytes.NewReader(emlContent))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read message: %v", err)
 	}
 
-	debugLog("Parsing email headers")
 	var headers []Header
 	fields := msg.Header.Fields()
 	for fields.Next() {
 		key := fields.Key()
 		rawValue := fields.Value()
 
-		debugLogf("Decoding header: %s", key)
 		decodedValue, err := (&mime.WordDecoder{}).DecodeHeader(rawValue)
 		if err != nil {
-			debugLogf("failed to decode header %s: %v", key, err)
 			decodedValue = rawValue // Use raw value as a fallback
 		}
 
 		headers = append(headers, Header{Key: key, Value: decodedValue})
 	}
 
-	debugLog("Completed parsing headers")
 	return headers, nil
 }
 
 func formatHeaders(headers []Header) string {
-	debugLog("Formatting headers for email content")
 	var headerBuilder strings.Builder
 	for _, header := range headers {
 		headerLine := fmt.Sprintf("%s: %s", header.Key, header.Value)
@@ -330,7 +291,6 @@ func formatHeaders(headers []Header) string {
 }
 
 func formatSelectedHeaders(headers []Header, targetHeaders []string) string {
-	debugLog("Selecting specific headers for email content")
 
 	targetHeadersMap := make(map[string]struct{})
 	for _, key := range targetHeaders {
@@ -349,7 +309,6 @@ func formatSelectedHeaders(headers []Header, targetHeaders []string) string {
 }
 
 func splitLongLines(s string, maxLength int) []string {
-	debugLogf("Splitting lines longer than %d characters", maxLength)
 
 	var lines []string
 	for len(s) > maxLength {
@@ -369,7 +328,6 @@ func splitLongLines(s string, maxLength int) []string {
 }
 
 func prepareEmail(sender, recipient, content, smtpHost, smtpPort string, attachment []byte, filename string) error {
-	debugLogf("Preparing email from %s to %s", sender, recipient)
 
 	var buf bytes.Buffer
 	var contentType string
@@ -377,7 +335,6 @@ func prepareEmail(sender, recipient, content, smtpHost, smtpPort string, attachm
 
 	hasAttachment := attachment != nil
 	if hasAttachment {
-		debugLog("Adding attachment to email")
 		writer = multipart.NewWriter(&buf)
 		contentType = fmt.Sprintf("multipart/mixed; boundary=%s", writer.Boundary())
 	} else {
@@ -392,7 +349,6 @@ func prepareEmail(sender, recipient, content, smtpHost, smtpPort string, attachm
 		"Content-Type": {contentType},
 	}
 
-	debugLog("Writing email headers")
 	for k, v := range headers {
 		_, _ = fmt.Fprintf(&buf, "%s: %s\r\n", k, strings.Join(v, " "))
 	}
@@ -400,11 +356,9 @@ func prepareEmail(sender, recipient, content, smtpHost, smtpPort string, attachm
 	buf.WriteString("\r\n")
 
 	if hasAttachment {
-		debugLog("Writing text content to email with attachment")
 		partWriter, _ := writer.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/plain; charset=UTF-8"}})
 		partWriter.Write([]byte(content))
 
-		debugLogf("Attaching file: %s", filename)
 		if filename == "" {
 			filename = "attachment.eml"
 		}
@@ -419,16 +373,13 @@ func prepareEmail(sender, recipient, content, smtpHost, smtpPort string, attachm
 			return fmt.Errorf("failed to close multipart writer: %w", err)
 		}
 	} else {
-		debugLog("Writing only text content to email without attachment")
 		buf.WriteString(content)
 	}
 
-	debugLog("Sending email via SMTP")
 	return sendSMTP(smtpHost, smtpPort, sender, recipient, buf.Bytes())
 }
 
 func sendSMTP(smtpHost, smtpPort, sender, receiver string, msg []byte) error {
-	debugLogf("Connecting to SMTP server: %s:%s", smtpHost, smtpPort)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -446,26 +397,21 @@ func sendSMTP(smtpHost, smtpPort, sender, receiver string, msg []byte) error {
 	defer func(client *smtp.Client) {
 		err := client.Quit()
 		if err != nil {
-			debugLogf("failed to quit SMTP client: %v", err)
 		}
 	}(client)
 
-	debugLogf("Setting SMTP sender: %s", sender)
 	if err := client.Mail(sender); err != nil {
 		return fmt.Errorf("failed to set sender: %w", err)
 	}
-	debugLogf("Setting SMTP recipient: %s", receiver)
 	if err := client.Rcpt(receiver); err != nil {
 		return fmt.Errorf("failed to set recipient: %w", err)
 	}
 
-	debugLog("Getting SMTP data writer")
 	writer, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("failed to get data writer: %w", err)
 	}
 
-	debugLog("Writing email data to SMTP server")
 	if _, err := writer.Write(msg); err != nil {
 		return fmt.Errorf("failed to write email data: %w", err)
 	}
@@ -473,6 +419,5 @@ func sendSMTP(smtpHost, smtpPort, sender, receiver string, msg []byte) error {
 		return fmt.Errorf("failed to close data writer: %w", err)
 	}
 
-	debugLog("Email sent successfully")
 	return nil
 }
