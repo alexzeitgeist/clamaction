@@ -8,79 +8,86 @@ import (
 )
 
 type Config struct {
-	// clamsmtpd
-	Email      string
-	Recipients []string
-	Sender     string
-	Virus      string
-
-	// smtp
-	SMTPHost     string
-	SMTPPort     string
-	EmailAdmin   string
-	EmailService string
-
-	// app
+	Email            string
+	Recipients       []string
+	Sender           string
+	Virus            string
+	SMTPHost         string
+	SMTPPort         string
+	EmailAdmin       string
+	EmailService     string
 	QuarantineFolder string
 	QuarantineFile   string
 	Debug            bool
 }
 
-func Load() (*Config, error) {
+// ConfigType is used to specify which configuration to load
+type ConfigType int
+
+const (
+	Action ConfigType = iota
+	Release
+)
+
+func Load(configType ConfigType) (*Config, error) {
+	var requiredVars []string
+
+	switch configType {
+	case Action:
+		requiredVars = []string{
+			"EMAIL", "VIRUS", "RECIPIENTS", "SENDER", "EMAIL_ADMIN", "EMAIL_SERVICE", "QUARANTINE_FOLDER",
+		}
+	case Release:
+		requiredVars = []string{
+			"EMAIL_SERVICE", "QUARANTINE_FOLDER",
+		}
+	default:
+		return nil, fmt.Errorf("invalid config type")
+	}
+
+	return loadConfig(requiredVars)
+}
+
+func loadConfig(requiredVars []string) (*Config, error) {
 	config := &Config{
 		SMTPHost: "localhost",
 		SMTPPort: "25",
-		Debug:    false,
 	}
 
-	var err error
+	for _, key := range requiredVars {
+		value, err := getEnvVar(key)
+		if err != nil {
+			return nil, err
+		}
 
-	config.Email, err = getEnvVar("EMAIL")
-	if err != nil {
-		return nil, err
-	}
-
-	config.Virus, err = getEnvVar("VIRUS")
-	if err != nil {
-		return nil, err
-	}
-
-	recipients, err := getEnvVar("RECIPIENTS")
-	if err != nil {
-		return nil, err
-	}
-	config.Recipients = strings.Split(recipients, "\n")
-
-	config.Sender, err = getEnvVar("SENDER")
-	if err != nil {
-		return nil, err
+		switch key {
+		case "EMAIL":
+			config.Email = value
+		case "VIRUS":
+			config.Virus = value
+		case "RECIPIENTS":
+			config.Recipients = strings.Split(value, "\n")
+		case "SENDER":
+			config.Sender = value
+		case "EMAIL_ADMIN":
+			config.EmailAdmin = value
+		case "EMAIL_SERVICE":
+			config.EmailService = value
+		case "QUARANTINE_FOLDER":
+			config.QuarantineFolder = strings.TrimRight(value, "/")
+		}
 	}
 
 	if smtpHost := os.Getenv("SMTP_HOST"); smtpHost != "" {
 		config.SMTPHost = smtpHost
 	}
-
 	if smtpPort := os.Getenv("SMTP_PORT"); smtpPort != "" {
 		config.SMTPPort = smtpPort
 	}
 
-	config.EmailAdmin, err = getEnvVar("EMAIL_ADMIN")
-	if err != nil {
-		return nil, err
+	if config.Email != "" && config.QuarantineFolder != "" {
+		config.QuarantineFile = filepath.Join(config.QuarantineFolder, filepath.Base(config.Email))
 	}
-
-	config.EmailService, err = getEnvVar("EMAIL_SERVICE")
-	if err != nil {
-		return nil, err
-	}
-
-	config.QuarantineFolder, err = getEnvVar("QUARANTINE_FOLDER")
-	if err != nil {
-		return nil, err
-	}
-	config.QuarantineFolder = strings.TrimRight(config.QuarantineFolder, "/")
-
-	config.QuarantineFile = filepath.Join(config.QuarantineFolder, filepath.Base(config.Email))
 
 	config.Debug = os.Getenv("DEBUG") == "true"
 

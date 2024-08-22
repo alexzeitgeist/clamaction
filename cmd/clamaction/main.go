@@ -13,7 +13,7 @@ import (
 func main() {
 	log.SetOutput(os.Stdout)
 
-	cfg, err := config.Load()
+	cfg, err := config.Load(config.Action)
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
