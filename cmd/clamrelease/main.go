@@ -8,17 +8,19 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"unicode"
 
 	"github.com/alexzeitgeist/clamaction/internal/config"
 	"github.com/alexzeitgeist/clamaction/internal/metadata"
 	"github.com/alexzeitgeist/clamaction/internal/smtp"
+	"github.com/google/uuid"
 )
 
 func main() {
 	if len(os.Args) != 2 {
-		log.Fatal("Usage: app <quarantine_id>")
+		log.Fatal("Usage: clamrelease <quarantine_id>")
 	}
 	id := os.Args[1]
 
@@ -58,6 +60,10 @@ func main() {
 		headers.Set("Resent-From", (&mail.Address{Address: cfg.EmailService}).String())
 		headers.Set("Resent-To", (&mail.Address{Address: recipient}).String())
 		headers.Set("Resent-Date", time.Now().Format(time.RFC1123Z))
+		messageID, err := generateMessageID(cfg.EmailService)
+		if err == nil {
+			headers.Set("Resent-Message-ID", messageID)
+		}
 
 		for key, values := range headers {
 			for _, value := range values {
@@ -71,4 +77,15 @@ func main() {
 			fmt.Printf("Failed to send email: %v\n", err)
 		}
 	}
+}
+
+func generateMessageID(emailService string) (string, error) {
+	parts := strings.SplitN(emailService, "@", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "", fmt.Errorf("invalid emailService string: %s is missing a domain", emailService)
+
+	}
+
+	domain := parts[1]
+	return fmt.Sprintf("<%s@%s>", uuid.New().String(), domain), nil
 }
